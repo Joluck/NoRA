@@ -1,0 +1,82 @@
+# Builds GPU docker image of PyTorch
+# Uses multi-staged approach to reduce size
+# Stage 1
+# Use base conda image to reduce time
+FROM continuumio/miniconda3:latest AS compile-image
+# Specify py version
+ENV PYTHON_VERSION=3.11
+# Install apt libs - copied from https://github.com/huggingface/accelerate/blob/main/docker/accelerate-gpu/Dockerfile
+# Install audio-related libraries
+RUN apt-get update && \
+    apt-get install -y curl git wget git-lfs ffmpeg libsndfile1-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists*
+
+RUN git lfs install
+
+# Create our conda env - copied from https://github.com/huggingface/accelerate/blob/main/docker/accelerate-gpu/Dockerfile
+RUN conda create --name peft python=${PYTHON_VERSION} ipython jupyter pip
+
+# Below is copied from https://github.com/huggingface/accelerate/blob/main/docker/accelerate-gpu/Dockerfile
+# We don't install pytorch here yet since CUDA isn't available
+# instead we use the direct torch wheel
+ENV PATH=/opt/conda/envs/peft/bin:$PATH
+# Activate our bash shell
+RUN chsh -s /bin/bash
+SHELL ["/bin/bash", "-c"]
+
+# Stage 2
+FROM nvidia/cuda:13.2.1-cudnn-devel-ubuntu24.04 AS build-image
+COPY --from=compile-image /opt/conda /opt/conda
+ENV PATH=/opt/conda/bin:$PATH
+
+# Install apt libs
+RUN apt-get update && \
+    apt-get install -y curl git wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists*
+
+RUN chsh -s /bin/bash
+SHELL ["/bin/bash", "-c"]
+
+RUN conda run -n peft pip install --no-cache-dir bitsandbytes optimum
+
+# Note: we are hard-coding CUDA_ARCH_LIST here since `gptqmodel` requires either nvidia-smi
+# or CUDA_ARCH_LIST for compute capability information. Since the docker build is unlikely
+# to have compute hardware available we use the information from the CI runner (which hosts
+# a NVIDIA L4). So we fix the compute capability to 8.9. In the future we might extend this
+# to a list of compute capabilities (separated by ;).
+RUN CUDA_ARCH_LIST=8.9 conda run -n peft pip install "gptqmodel>=7.0.0"
+
+RUN \
+    # Add eetq for quantization testing; needs to run without build isolation since the setup
+    # script directly imports torch from the environment which would fail with isolation.
+    # Ninja should speed up build time.
+    conda run -n peft pip install ninja && conda run -n peft pip install --no-build-isolation git+https://github.com/NetEase-FuXi/EETQ.git
+
+RUN NVTE_BUILD_USE_NVIDIA_WHEELS=1 \
+    CPATH="/usr/local/cuda/include:${CPATH}" \
+    conda run -n peft pip install --no-build-isolation "transformer_engine[pytorch]"
+
+# Activate the conda env and install transformers + accelerate from source
+RUN conda run -n peft pip install -U --no-cache-dir \
+        librosa \
+        "soundfile>=0.12.1" \
+        scipy \
+        torchao \
+        "fbgemm-gpu-genai>=1.2.0" \
+        git+https://github.com/huggingface/transformers \
+        git+https://github.com/huggingface/accelerate \
+        peft[test]@git+https://github.com/huggingface/peft \
+        # Add aqlm for quantization testing
+        aqlm[gpu]>=1.0.2 \
+        # Add HQQ for quantization testing
+        hqq \
+        deepspeed
+
+RUN conda run -n peft pip freeze | grep transformers
+
+RUN echo "source activate peft" >> ~/.profile
+
+# Activate the virtualenv
+CMD ["/bin/bash"]

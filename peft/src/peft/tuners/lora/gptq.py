@@ -1,0 +1,129 @@
+# Copyright 2023-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from typing import Any, Optional
+
+import torch
+
+from peft.tuners.lora.layer import LoraLayer
+from peft.tuners.tuners_utils import BaseTunerLayer
+
+from ...import_utils import is_gptqmodel_available
+from .config import LoraConfig
+from .layer import LoraVariant
+
+
+class GPTQLoraLinear(torch.nn.Module, LoraLayer):
+    def __init__(
+        self,
+        base_layer,
+        adapter_name: str,
+        config: LoraConfig,
+        r: int = 0,
+        lora_alpha: int = 1,
+        **kwargs,
+    ):
+        super().__init__()
+        LoraLayer.__init__(self, base_layer)
+
+        if config.use_dora:
+            raise ValueError(f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
+
+        # self.base_layer and self.quant_linear_module are the same; we need the former for consistency and the latter
+        # for backwards compatibility
+        self.quant_linear_module = base_layer
+        self._active_adapter = adapter_name
+        self.update_layer(
+            adapter_name,
+            r,
+            lora_alpha=lora_alpha,
+            config=config,
+        )
+
+    def resolve_lora_variant(self, *, config: LoraConfig, **kwargs) -> Optional[LoraVariant]:
+        if config.use_dora and config.use_qalora:
+            raise NotImplementedError(
+                f"DoRA and QA-LoRA at the same time is not supported for {self.__class__.__name__} (yet)."
+            )
+        elif config.use_dora:
+            from .variants import DoraLinearVariant
+
+            variant = DoraLinearVariant()
+        elif config.use_qalora:
+            from .variants import QALoraLinearVariant
+
+            variant = QALoraLinearVariant()
+        else:
+            variant = None
+        return variant
+
+    def forward(self, x: torch.Tensor):
+        # note: logic differs from default Linear because merging is not supported
+        result = self.quant_linear_module(x)
+
+        if self.disable_adapters:
+            return result
+
+        lora_A_keys = self.lora_A.keys()
+
+        for active_adapter in self.active_adapters:
+            if active_adapter not in lora_A_keys:
+                continue
+            torch_result_dtype = result.dtype
+
+            lora_A = self.lora_A[active_adapter]
+            lora_B = self.lora_B[active_adapter]
+            dropout = self.lora_dropout[active_adapter]
+            scaling = self.scaling[active_adapter]
+
+            x = self._cast_input_dtype(x, lora_A.weight.dtype)
+
+            if active_adapter not in self.lora_variant:  # vanilla LoRA
+                result = result + lora_B(lora_A(dropout(x))) * scaling
+            else:
+                result = self.lora_variant[active_adapter].forward(
+                    self,
+                    active_adapter=active_adapter,
+                    x=x,
+                    result=result,
+                )
+
+            result = result.to(torch_result_dtype)
+        return result
+
+    def __repr__(self) -> str:
+        rep = super().__repr__()
+        return "lora." + rep
+
+
+def dispatch_gptq(
+    target: torch.nn.Module,
+    adapter_name: str,
+    config: LoraConfig,
+    **kwargs: Any,
+) -> Optional[torch.nn.Module]:
+    new_module = None
+
+    if isinstance(target, BaseTunerLayer):
+        target_base_layer = target.get_base_layer()
+    else:
+        target_base_layer = target
+
+    if is_gptqmodel_available():
+        from gptqmodel.nn_modules.qlinear import BaseQuantLinear
+
+        if isinstance(target_base_layer, BaseQuantLinear):
+            new_module = GPTQLoraLinear(target, adapter_name, config=config, **kwargs)
+            target.qweight = target_base_layer.qweight
+
+    return new_module
