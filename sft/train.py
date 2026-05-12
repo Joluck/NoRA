@@ -12,7 +12,7 @@ from transformers import Trainer, BitsAndBytesConfig
 from datasets import load_dataset, concatenate_datasets
 import datasets
 import numpy as np
-from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training, PeftModel, LoraRuntimeConfig
+from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training, PeftModel, MissConfig, LoraRuntimeConfig
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
 IGNORE_INDEX = -100
@@ -52,6 +52,11 @@ class TrainingArguments(transformers.TrainingArguments):
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(default=512,metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},)
     merge : Optional[bool] = field(default=False,metadata={"help": "Merge the PiSSA adapter to the residual model or LoRA to the base model"},)
+    use_miss: Optional[bool] = field(default=False)
+    miss_r: Optional[int] = field(default=64)
+    miss_mini_r: Optional[int] = field(default=8)
+    init_miss_weights: Literal[True, "bat", "mini"] = field(default=True)
+    miss_dropout: Optional[float] = field(default=0.)
 
 class SavePeftModelCallback(transformers.TrainerCallback):
     def __init__(self, tokenizer):
@@ -196,17 +201,28 @@ def build_model(script_args, checkpoint_dir):
             model = PeftModel.from_pretrained(model, script_args.model_name_or_path, subfolder = script_args.adapter_name_or_path, is_trainable=True)
         else:
             logger.info(f'Init LoRA/PiSSA modules...')
-            peft_config = LoraConfig(
-                use_dora=script_args.use_dora,
-                runtime_config=LoraRuntimeConfig(ephemeral_gpu_offload=script_args.use_dora),
-                task_type=TaskType.CAUSAL_LM,
-                target_modules=script_args.target_modules.split(','),
-                inference_mode=False,
-                r=script_args.lora_rank, 
-                lora_alpha=script_args.lora_alpha,
-                lora_dropout=script_args.lora_dropout,
-                init_lora_weights=script_args.init_weights,
-            )
+            if script_args.use_miss:
+                peft_config = MissConfig(
+                    task_type=TaskType.CAUSAL_LM,
+                    target_modules=script_args.target_modules.split(','),
+                    inference_mode=False,
+                    r=script_args.miss_r,
+                    mini_r=script_args.miss_mini_r,
+                    miss_dropout=script_args.miss_dropout,
+                    init_weights=script_args.init_miss_weights,
+                )
+            else:
+                peft_config = LoraConfig(
+                    use_dora=script_args.use_dora,
+                    runtime_config=LoraRuntimeConfig(ephemeral_gpu_offload=script_args.use_dora),
+                    task_type=TaskType.CAUSAL_LM,
+                    target_modules=script_args.target_modules.split(','),
+                    inference_mode=False,
+                    r=script_args.lora_rank, 
+                    lora_alpha=script_args.lora_alpha,
+                    lora_dropout=script_args.lora_dropout,
+                    init_lora_weights=script_args.init_weights,
+                )
             model = get_peft_model(model, peft_config)
 
     for name, module in model.named_modules():
