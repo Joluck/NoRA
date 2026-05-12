@@ -1,0 +1,11 @@
+accelerate
+datasets
+deepspeed
+fire
+huggingface-hub
+math-verify
+torch
+transformers
+trl[vllm]
+peft
+wandb
