@@ -573,11 +573,18 @@ def get_meta_info() -> MetaInfo:
 
 
 def get_peft_branch() -> str:
-    return (
-        subprocess.check_output("git rev-parse --abbrev-ref HEAD".split(), cwd=os.path.dirname(peft.__file__))
-        .decode()
-        .strip()
-    )
+    try:
+        return (
+            subprocess.check_output(
+                "git rev-parse --abbrev-ref HEAD".split(),
+                cwd=os.path.dirname(peft.__file__),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except subprocess.CalledProcessError:
+        return "unknown"
 
 
 class TrainStatus(enum.Enum):
