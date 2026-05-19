@@ -1,4 +1,4 @@
-# Block-diag init LoRA
+# Block-Identity init LoRA
 
 # pip install
 ```
