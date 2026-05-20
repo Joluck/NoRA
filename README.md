@@ -2,11 +2,12 @@
 
 # pip install
 ```
-git clone xxx
-cd xxx/peft
+git clone blockii
+cd blockii/peft
 uv pip install .
 ```
-
+# use blockii
+init_lora_weights='blockii'
 # use sft
 ```
 cd sft 

@@ -32,7 +32,7 @@ class TrainingArguments(transformers.TrainingArguments):
     # Lora or PiSSA setting
     full_finetune : Optional[bool] = field(default=True)
     adapter_name_or_path: Optional[str] = field(default=None,metadata={"help": ("Pre-initialized PiSSA adapter path; when this is not None, the following arguments are ignored."),},)
-    init_weights: Literal[True, "pissa", "pissa_niter_4", "pissa_niter_16", "olora", "blockdiag"]= field(default=True,metadata={"help": ("True -> LoRA; `pissa` -> PiSSA; `pissa_niter_16` -> Fast SVD PiSSA"),},)
+    init_weights: Literal[True, "pissa", "pissa_niter_4", "pissa_niter_16", "olora", "blockii"]= field(default=True,metadata={"help": ("True -> LoRA; `pissa` -> PiSSA; `pissa_niter_16` -> Fast SVD PiSSA"),},)
     use_dora : Optional[bool] = field(default=False)
     target_modules : Optional[str] = field(default="q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj")
     lora_rank : Optional[int] = field(default=8)

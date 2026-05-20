@@ -239,9 +239,9 @@ class LoraLayer(BaseTunerLayer):
         elif init_lora_weights == "lora_ga":
             with gather_params_ctx(self.get_base_layer().weight):
                 self.lora_ga_init(adapter_name, config.lora_ga_config)
-        elif init_lora_weights == "blocki":
+        elif init_lora_weights == "blockii":
             with gather_params_ctx(self.get_base_layer().weight):
-                self.blocki_init(adapter_name, config.lora_ga_config)
+                self.blockii_init(adapter_name, config.lora_ga_config)
         elif init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
         # call this before init of the lora variants
@@ -359,7 +359,7 @@ class LoraLayer(BaseTunerLayer):
         else:
             weight_tensor = weight_tensor.to(dtype)
             base_layer.weight.data = weight_tensor
-    def blocki_init(self, adapter_name, init_lora_weights):
+    def blockii_init(self, adapter_name, init_lora_weights):
         weight = self.get_base_layer().weight
         dtype = weight.dtype
         lora_A = self.lora_A[adapter_name].weight  # [r, in_features]
@@ -2270,9 +2270,9 @@ class ParamWrapper(nn.Module, LoraLayer):
         elif init_lora_weights == "lora_ga":
             with gather_params_ctx(self.get_base_layer().weight):
                 self.lora_ga_init(adapter_name, config.lora_ga_config)
-        elif init_lora_weights == "blocki":
+        elif init_lora_weights == "blockii":
             with gather_params_ctx(self.get_base_layer().weight):
-                self.blocki_init(adapter_name, config.lora_ga_config)
+                self.blockii_init(adapter_name, config.lora_ga_config)
         elif init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
         # call this before init of the lora variants
