@@ -12,7 +12,11 @@ from transformers import Trainer, BitsAndBytesConfig
 from datasets import load_dataset, concatenate_datasets
 import datasets
 import numpy as np
-from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training, PeftModel, MissConfig, LoraRuntimeConfig
+from peft import (
+    LoraConfig, AdaLoraConfig, OFTConfig,
+    TaskType, get_peft_model, prepare_model_for_kbit_training,
+    PeftModel, MissConfig, LoraRuntimeConfig,
+)
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
 IGNORE_INDEX = -100
@@ -52,6 +56,19 @@ class TrainingArguments(transformers.TrainingArguments):
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(default=512,metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},)
     merge : Optional[bool] = field(default=False,metadata={"help": "Merge the PiSSA adapter to the residual model or LoRA to the base model"},)
+    use_rslora: Optional[bool] = field(default=False, metadata={"help": "Use rsLoRA scaling (applies to LoRA and AdaLoRA)."})
+    use_adalora: Optional[bool] = field(default=False, metadata={"help": "Use AdaLoRA instead of LoRA."})
+    use_oft: Optional[bool] = field(default=False, metadata={"help": "Use OFT instead of LoRA."})
+    oft_block_size: Optional[int] = field(default=32, metadata={"help": "OFT block size (OFT does not use r)."})
+    oft_coft: Optional[bool] = field(default=False, metadata={"help": "Use constrained OFT (cOFT)."})
+    adalora_target_r: Optional[int] = field(default=8, metadata={"help": "AdaLoRA target rank."})
+    adalora_init_r: Optional[int] = field(default=12, metadata={"help": "AdaLoRA initial rank."})
+    adalora_tinit: Optional[int] = field(default=0, metadata={"help": "AdaLoRA initial warmup steps."})
+    adalora_tfinal: Optional[int] = field(default=0, metadata={"help": "AdaLoRA final warmup steps."})
+    adalora_deltaT: Optional[int] = field(default=1, metadata={"help": "AdaLoRA step interval for rank allocation."})
+    adalora_beta1: Optional[float] = field(default=0.85)
+    adalora_beta2: Optional[float] = field(default=0.85)
+    adalora_orth_reg_weight: Optional[float] = field(default=0.5)
     use_miss: Optional[bool] = field(default=False)
     miss_r: Optional[int] = field(default=64)
     miss_mini_r: Optional[int] = field(default=8)
@@ -200,8 +217,8 @@ def build_model(script_args, checkpoint_dir):
             logger.info(f"Initilize LoRA/PiSSA/CLOVER adapters from {script_args.model_name_or_path}/{script_args.adapter_name_or_path}.")
             model = PeftModel.from_pretrained(model, script_args.model_name_or_path, subfolder = script_args.adapter_name_or_path, is_trainable=True)
         else:
-            logger.info(f'Init LoRA/PiSSA modules...')
             if script_args.use_miss:
+                logger.info(f'Init Miss modules...')
                 peft_config = MissConfig(
                     task_type=TaskType.CAUSAL_LM,
                     target_modules=script_args.target_modules.split(','),
@@ -211,17 +228,48 @@ def build_model(script_args, checkpoint_dir):
                     miss_dropout=script_args.miss_dropout,
                     init_weights=script_args.init_miss_weights,
                 )
+            elif script_args.use_adalora:
+                logger.info(f'Init AdaLoRA modules...')
+                peft_config = AdaLoraConfig(
+                    task_type=TaskType.CAUSAL_LM,
+                    target_modules=script_args.target_modules.split(','),
+                    inference_mode=False,
+                    r=script_args.lora_rank,
+                    lora_alpha=script_args.lora_alpha,
+                    lora_dropout=script_args.lora_dropout,
+                    use_rslora=script_args.use_rslora,
+                    target_r=script_args.adalora_target_r,
+                    init_r=script_args.adalora_init_r,
+                    tinit=script_args.adalora_tinit,
+                    tfinal=script_args.adalora_tfinal,
+                    deltaT=script_args.adalora_deltaT,
+                    beta1=script_args.adalora_beta1,
+                    beta2=script_args.adalora_beta2,
+                    orth_reg_weight=script_args.adalora_orth_reg_weight,
+                )
+            elif script_args.use_oft:
+                logger.info(f'Init OFT modules...')
+                peft_config = OFTConfig(
+                    task_type=TaskType.CAUSAL_LM,
+                    target_modules=script_args.target_modules.split(','),
+                    inference_mode=False,
+                    r=script_args.lora_rank,
+                    oft_block_size=script_args.oft_block_size,
+                    coft=script_args.oft_coft,
+                )
             else:
+                logger.info(f'Init LoRA/PiSSA modules...')
                 peft_config = LoraConfig(
                     use_dora=script_args.use_dora,
                     runtime_config=LoraRuntimeConfig(ephemeral_gpu_offload=script_args.use_dora),
                     task_type=TaskType.CAUSAL_LM,
                     target_modules=script_args.target_modules.split(','),
                     inference_mode=False,
-                    r=script_args.lora_rank, 
+                    r=script_args.lora_rank,
                     lora_alpha=script_args.lora_alpha,
                     lora_dropout=script_args.lora_dropout,
                     init_lora_weights=script_args.init_weights,
+                    use_rslora=script_args.use_rslora,
                 )
             model = get_peft_model(model, peft_config)
 

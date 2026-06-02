@@ -34,7 +34,7 @@ def main():
 
     stop_tokens = []
     sampling_params = SamplingParams(temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_tokens, stop=stop_tokens)
-    llm = LLM(model=args.model, tensor_parallel_size=torch.cuda.device_count())
+    llm = LLM(model=args.model, tensor_parallel_size=torch.cuda.device_count(), trust_remote_code=True)
 
     if args.sub_task is None:
         dataset = load_dataset(args.data_path, split=args.dataset_split)

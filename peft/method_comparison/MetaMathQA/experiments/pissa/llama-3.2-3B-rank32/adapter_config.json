@@ -8,7 +8,7 @@
   "exclude_modules": null,
   "fan_in_fan_out": false,
   "inference_mode": false,
-  "init_lora_weights": "blockii",
+  "init_lora_weights": "pissa",
   "layer_replication": null,
   "layers_pattern": null,
   "layers_to_transform": null,

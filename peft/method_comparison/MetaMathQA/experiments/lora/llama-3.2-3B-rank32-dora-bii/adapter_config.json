@@ -25,6 +25,6 @@
   "revision": null,
   "target_modules": null,
   "task_type": "CAUSAL_LM",
-  "use_dora": false,
+  "use_dora": true,
   "use_rslora": false
 }

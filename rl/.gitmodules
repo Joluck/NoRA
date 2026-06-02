@@ -1,9 +1,0 @@
-[submodule "modules/slime"]
-	path = modules/slime
-	url = https://github.com/MikaStars39/slime.git
-[submodule "modules/Megatron-LM"]
-	path = modules/Megatron-LM
-	url = https://github.com/MikaStars39/Megatron-LM-perl.git
-[submodule "modules/Emerging-Optimizers"]
-	path = modules/Emerging-Optimizers
-	url = https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git

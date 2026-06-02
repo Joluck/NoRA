@@ -631,6 +631,7 @@ def log_to_file(
         # we need unique names to avoid losing history.
         file_name = f"{experiment_name.replace(os.path.sep, '--')}--{timestamp.replace(':', '-')}.json"
     file_name = os.path.join(save_dir, file_name)
+    os.makedirs(save_dir, exist_ok=True)
     with open(file_name, "w") as f:
         json.dump(log_data, f, indent=2)
     print_fn(f"Saved log to: {file_name}")
