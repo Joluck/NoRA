@@ -1,0 +1,191 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  generateName: zhengzhan-p1-lora-rl-
+  namespace: bonete61
+  labels:
+    submitter: zhengzhan
+spec:
+  queue: bonete61
+  minAvailable: 1
+  plugins:
+    ssh: []
+    svc: []
+    env: []
+  tasks:
+    - name: node
+      replicas: 1
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        metadata:
+          labels:
+            app: lora-rl
+        spec:
+          schedulerName: volcano
+          priorityClassName: high
+          restartPolicy: Never
+          hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: app
+                        operator: Exists
+                  topologyKey: "kubernetes.io/hostname"
+          imagePullSecrets:
+            - name: acr-pull
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+            - name: shared-storage
+              persistentVolumeClaim:
+                claimName: pvc-vast-bonete61
+          containers:
+            - name: node
+              image: aifrontiers.azurecr.io/nvidia25.11-pytorch2.9.1-te2.10-deepspeed0.18.4-flashattn2.8.3.dev-vllm0.13.0:20260112
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+                - name: shared-storage
+                  mountPath: /data
+                - name: shared-storage
+                  mountPath: /home/zhengzhan
+                  subPath: zhengzhan
+              env:
+                - name: WANDB_HOST
+                  value: "https://api.wandb.ai"
+                - name: WANDB_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: wandb-secret
+                      key: api-key
+                - name: HF_DATASETS_CACHE
+                  value: "/data/yingfan/datasets"
+                - name: HF_HOME
+                  value: "/data/yingfan/datasets"
+                - name: TRANSFORMERS_CACHE
+                  value: "/data/yingfan/datasets"
+
+              command: ["/bin/bash","-lc"]
+              args:
+                - |
+                  set -euxo pipefail
+                  nvidia-smi
+
+                  export PIP_CONSTRAINT=
+                  unset PIP_CONSTRAINT
+
+                  cd /data/zhengzhan/perl
+                  python - <<'PY'
+                  from pathlib import Path
+
+                  skip = {
+                      "deepspeed",
+                      "peft",
+                      "torch",
+                      "torchaudio",
+                      "torchvision",
+                      "triton",
+                      "trl",
+                      "vllm",
+                      "xformers",
+                  }
+                  lines = []
+                  for line in Path("requirements.txt").read_text().splitlines():
+                      stripped = line.strip()
+                      if not stripped or stripped.startswith("#"):
+                          lines.append(line)
+                          continue
+                      name = stripped.split("==", 1)[0].split(">=", 1)[0].split("<", 1)[0].split("[", 1)[0].strip().lower()
+                      if name in skip:
+                          continue
+                      lines.append(line)
+                  Path("/tmp/requirements.cluster.txt").write_text("\n".join(lines) + "\n")
+                  print(Path("/tmp/requirements.cluster.txt").read_text())
+                  PY
+                  python -m pip install -r /tmp/requirements.cluster.txt
+                  python -m pip install --upgrade trl
+                  python -m pip install --upgrade --no-deps "torchao>=0.16.0"
+                  python -m pip install -e /data/zhengzhan/blockii/peft --no-deps
+                  python - <<'PY'
+                  from pathlib import Path
+
+                  path = Path("modules/trl/perl/train.py")
+                  text = path.read_text()
+                  old = """    training_args = GRPOConfig(
+                          **vars(args.training),
+                      )
+                  """
+                  new = """    import inspect
+                      supported_grpo_args = set(inspect.signature(GRPOConfig.__init__).parameters)
+                      training_config = {
+                          key: value
+                          for key, value in vars(args.training).items()
+                          if key in supported_grpo_args
+                      }
+                      ignored_training_args = sorted(set(vars(args.training)) - set(training_config))
+                      if ignored_training_args:
+                          logger.info(f"Ignoring unsupported GRPOConfig args: {ignored_training_args}")
+                      training_args = GRPOConfig(
+                          **training_config,
+                      )
+                  """
+                  if old in text:
+                      path.write_text(text.replace(old, new))
+                      print("patched GRPOConfig argument filtering")
+                  elif "supported_grpo_args = set(inspect.signature(GRPOConfig.__init__).parameters)" in text:
+                      print("GRPOConfig argument filtering already patched")
+                  else:
+                      raise RuntimeError("Could not patch GRPOConfig construction")
+                  PY
+
+                  python - <<'PY'
+                  import accelerate, deepspeed, flash_attn, peft, torch, torchao, transformers, trl, vllm
+                  from peft import LoraConfig
+                  from trl import GRPOConfig, GRPOTrainer
+                  print("torch", torch.__version__, "cuda", torch.cuda.device_count())
+                  print("torchao", torchao.__version__)
+                  print("flash_attn", flash_attn.__version__)
+                  print("peft", peft.__version__, LoraConfig(init_lora_weights="blockii").init_lora_weights)
+                  print("transformers", transformers.__version__, "trl", trl.__version__, "accelerate", accelerate.__version__)
+                  print("deepspeed", deepspeed.__version__, "vllm", vllm.__version__)
+                  print("trl_grpo_import_ok", GRPOConfig, GRPOTrainer)
+                  PY
+
+                  export RUN_NAME="p1-lora-rl-$(date +%Y%m%d_%H%M%S)"
+                  export WANDB_NAME="${RUN_NAME}"
+                  export WANDB_PROJECT="blockii-rl"
+                  export WANDB_API_KEY="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"
+                  export WANDB_BASE_URL="https://api.wandb.ai"
+                  export WANDB_HOST="https://api.wandb.ai"
+                  sed -i \
+                    -e '/^set -o pipefail$/d' \
+                    -e '1a set -o pipefail' \
+                    -e 's/CUDA_VISIBLE_DEVICES=0,1,2,3 /CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 /' \
+                    -e 's/ds_zero2_4gpu.yaml/ds_zero2_8gpu.yaml/' \
+                    -e 's#&> ${LOG_FILE}#2>\\&1 | tee ${LOG_FILE}#' \
+                    -e 's|--config.training.run_name "${OUTPUT_DIR}"|--config.training.run_name "${RUN_NAME}"|' \
+                    recipes/trl/openr1/lora.sh
+
+                  echo "Starting LoRA RL training..."
+                  bash recipes/trl/openr1/lora.sh
+                  echo "Done"
+              resources:
+                requests:
+                  nvidia.com/gpu: "8"
+                  cpu: "80"
+                  memory: "2808Gi"
+                limits:
+                  nvidia.com/gpu: "8"
+                  cpu: "80"
+                  memory: "2808Gi"
