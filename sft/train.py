@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Sequence, List, Literal
 import logging
 import os
-
 import torch
 import torch.distributed
 import transformers
@@ -350,7 +349,8 @@ def train():
     if script_args.local_rank == 0:
         torch.distributed.barrier()
         print(model)
-        model.print_trainable_parameters()
+        if not script_args.full_finetune:
+            model.print_trainable_parameters()
 
         logger.info("Training dataset samples:", len(train_dataset))
         for index in random.sample(range(len(train_dataset)), 3):
