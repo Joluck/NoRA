@@ -35,7 +35,7 @@ class TrainingArguments(transformers.TrainingArguments):
     # Lora or PiSSA setting
     full_finetune : Optional[bool] = field(default=True)
     adapter_name_or_path: Optional[str] = field(default=None,metadata={"help": ("Pre-initialized PiSSA adapter path; when this is not None, the following arguments are ignored."),},)
-    init_weights: Literal[True, "pissa", "pissa_niter_4", "pissa_niter_16", "olora", "blockii"]= field(default=True,metadata={"help": ("True -> LoRA; `pissa` -> PiSSA; `pissa_niter_16` -> Fast SVD PiSSA"),},)
+    init_weights: Literal[True, "pissa", "pissa_niter_4", "pissa_niter_16", "olora", "bimi","gaussian"]= field(default=True,metadata={"help": ("True -> LoRA; `pissa` -> PiSSA; `pissa_niter_16` -> Fast SVD PiSSA"),},)
     use_dora : Optional[bool] = field(default=False)
     target_modules : Optional[str] = field(default="q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj")
     lora_rank : Optional[int] = field(default=8)
@@ -56,6 +56,7 @@ class TrainingArguments(transformers.TrainingArguments):
     model_max_length: int = field(default=512,metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},)
     merge : Optional[bool] = field(default=False,metadata={"help": "Merge the PiSSA adapter to the residual model or LoRA to the base model"},)
     use_rslora: Optional[bool] = field(default=False, metadata={"help": "Use rsLoRA scaling (applies to LoRA and AdaLoRA)."})
+    use_nora: Literal[True, "alltime"] = field(default=False, metadata={"help": "True -> normalize lora_A.weight along r once after init; `alltime` -> normalize on every forward (applies to LoRA)."})
     use_adalora: Optional[bool] = field(default=False, metadata={"help": "Use AdaLoRA instead of LoRA."})
     use_oft: Optional[bool] = field(default=False, metadata={"help": "Use OFT instead of LoRA."})
     oft_block_size: Optional[int] = field(default=32, metadata={"help": "OFT block size (OFT does not use r)."})
@@ -269,6 +270,7 @@ def build_model(script_args, checkpoint_dir):
                     lora_dropout=script_args.lora_dropout,
                     init_lora_weights=script_args.init_weights,
                     use_rslora=script_args.use_rslora,
+                    use_nora=script_args.use_nora,
                 )
             model = get_peft_model(model, peft_config)
 

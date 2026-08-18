@@ -1,2 +1,4 @@
 scripts/
 wandb/
+./claude
+/__pycache__
