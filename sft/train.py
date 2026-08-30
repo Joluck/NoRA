@@ -56,7 +56,7 @@ class TrainingArguments(transformers.TrainingArguments):
     model_max_length: int = field(default=512,metadata={"help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."},)
     merge : Optional[bool] = field(default=False,metadata={"help": "Merge the PiSSA adapter to the residual model or LoRA to the base model"},)
     use_rslora: Optional[bool] = field(default=False, metadata={"help": "Use rsLoRA scaling (applies to LoRA and AdaLoRA)."})
-    use_nora: Literal[True, "alltime"] = field(default=False, metadata={"help": "True -> normalize lora_A.weight along r once after init; `alltime` -> normalize on every forward (applies to LoRA)."})
+    use_nora: Literal[True, "init"] = field(default=False, metadata={"help": "True -> normalize lora_A.weight along r on every forward; `init` -> normalize once after init (applies to LoRA)."})
     use_adalora: Optional[bool] = field(default=False, metadata={"help": "Use AdaLoRA instead of LoRA."})
     use_oft: Optional[bool] = field(default=False, metadata={"help": "Use OFT instead of LoRA."})
     oft_block_size: Optional[int] = field(default=32, metadata={"help": "OFT block size (OFT does not use r)."})

@@ -1,6 +1,6 @@
-# NoRA: Rank-wise Normalized LoRA
+# NoRA: Normalized Low-Rank Adaptation
 
-NoRA is a LoRA variant that L2-normalizes the columns of `lora_A.weight` along the rank
+NoRA is a LoRA variant that normalizes the columns of `lora_A.weight` along the rank
 (r) dimension, implemented as a fork of [PEFT](https://github.com/huggingface/peft) together
 with an SFT training pipeline.
 
@@ -11,11 +11,15 @@ effective update scale easier to reason about.
 
 Two modes are supported via `use_nora`:
 
-- `use_nora=True` — normalize **once**, right after adapter initialization. Afterwards `A`
-  is an ordinary parameter; merging is the standard `B @ A`.
-- `use_nora="alltime"` — normalize on **every forward pass** (reparameterization-style;
+- `use_nora=True` — normalize on **every forward pass** (reparameterization-style;
   gradients flow through the normalization). `merge_and_unload()` applies the same
   normalization, so the merged model matches the adapter model exactly.
+- `use_nora="init"` — normalize **once**, right after adapter initialization. Afterwards `A`
+  is an ordinary parameter; merging is the standard `B @ A`.
+
+`use_nora` composes with `use_dora=True`: in the default (per-forward) mode the normalization
+is applied inside DoRA's forward (including its weight-norm computation), and the DoRA
+merge/unmerge path uses the same normalized delta via `get_delta_weight()`.
 
 **BIMI** (Block Identity Matrix Initialization, `init_lora_weights="bimi"`) is a special
 case of this family: `lora_A` is initialized as `r × r` identity blocks tiled along the
@@ -28,7 +32,7 @@ PiSSA/MiLoRA).
 
 ```bash
 git clone <this-repo>
-cd BIMI/peft
+cd NoRA/peft
 uv pip install .   # or: pip install .
 ```
 
@@ -46,15 +50,24 @@ config = LoraConfig(
     r=8,
     lora_alpha=32,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    use_nora="alltime",         # per-forward normalization; or True for init-only
-    init_lora_weights="bimi",   # optional: block identity init (already unit-norm)
+    use_nora=True,            # per-forward normalization; or "init" for init-only
 )
 model = get_peft_model(base_model, config)
 ```
 
-`init_lora_weights` also accepts the standard PEFT options
-(`True`/`"gaussian"`, `"pissa"`, `"olora"`, `"corda"`, `"loftq"`, ...), all of which compose
-with `use_nora`.
+#### if you want to use BIMI
+  
+```python
+from peft import LoraConfig, get_peft_model
+
+config = LoraConfig(
+    r=8,
+    lora_alpha=32,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+    init_lora_weights="bimi",   # optional: block identity init (already unit-norm)
+)
+model = get_peft_model(base_model, config)
+```
 
 ### SFT training
 
@@ -63,15 +76,7 @@ The `sft/` directory contains a full supervised fine-tuning pipeline
 
 ```bash
 cd sft
-deepspeed --include=localhost:0,1,2,3 train.py \
-    --deepspeed configs/ds_config_zero2_no_offload.json \
-    --model_name_or_path meta-llama/Meta-Llama-3-8B \
-    --full_finetune False --bf16 \
-    --nora alltime \
-    --lora_rank 32 --lora_alpha 32 \
-    --data_path fxmeng/pissa-dataset --sub_task metamath:100000 \
-    --dataset_field instruction output \
-    --output_dir <out>
+sh nora.sh
 ```
 
 See `sft/scripts/` for complete runnable examples.
@@ -80,7 +85,7 @@ Key arguments in `sft/train.py`:
 
 | Argument | Description |
 |---|---|
-| `--nora` | `True` = normalize `lora_A` once after init; `alltime` = normalize every forward |
+| `--use_nora` | `True` = normalize `lora_A` every forward (default mode); `init` = normalize once after init |
 | `--init_weights` | `True` = vanilla LoRA; `bimi` = BIMI; also `pissa`, `pissa_niter_N`, `olora`, `gaussian` |
 | `--lora_rank` / `--lora_alpha` | LoRA rank / alpha |
 | `--target_modules` | Comma-separated modules to adapt |
@@ -90,30 +95,12 @@ Key arguments in `sft/train.py`:
 
 DeepSpeed configs are provided in `sft/configs/` (ZeRO-2 and ZeRO-3).
 
-### Evaluation
-
-Task accuracy with vLLM generation:
-
-```bash
-python utils/gen_vllm.py --model <ckpt> --data_path <dataset> --sub_task <task> \
-    --output_file model_response.jsonl
-python utils/test_acc.py --input_file model_response.jsonl
-```
-
-Benchmarks with [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
-(see `sft/eval.sh`):
-
-```bash
-lm_eval --model vllm \
-    --model_args pretrained=<ckpt>,tensor_parallel_size=4,dtype=bfloat16,gpu_memory_utilization=0.8 \
-    --tasks mmlu,agieval,arc_challenge \
-    --batch_size auto
-```
-
+### RL training
+https://github.com/MikaStars39/PeRL.git
 ## Repository structure
 
 ```
-BIMI/
+NoRA/
 ├── peft/     # PEFT fork: use_nora + init_lora_weights="bimi"
 │             # (core logic: peft/src/peft/tuners/lora/layer.py)
 └── sft/      # SFT training + evaluation pipeline
@@ -123,7 +110,3 @@ BIMI/
     ├── scripts/   # example training scripts
     └── utils/     # vLLM generation & accuracy scripts
 ```
-
-## License
-
-The `peft/` directory retains the original PEFT license (Apache 2.0).

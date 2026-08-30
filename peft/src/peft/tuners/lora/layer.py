@@ -248,7 +248,7 @@ class LoraLayer(BaseTunerLayer):
         elif init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
 
-        if config.use_nora is True:
+        if config.use_nora == "init":
             # nora: normalize lora_A columns (over the r dimension) once, right after initialization
             self.normalize_lora_A_(adapter_name)
         # call this before init of the lora variants
@@ -958,7 +958,7 @@ class Linear(nn.Module, LoraLayer):
         weight_A = self.lora_A[adapter].weight
         weight_B = self.lora_B[adapter].weight
 
-        if self.use_nora.get(adapter, False) == "alltime":
+        if self.use_nora.get(adapter) is True:
             weight_A = weight_A / (weight_A.norm(dim=0, keepdim=True) + 1e-6)  # norm over r, same as forward
 
         if cast_to_fp32:
@@ -1004,7 +1004,7 @@ class Linear(nn.Module, LoraLayer):
                 scaling = self.scaling[active_adapter]
                 x = self._cast_input_dtype(x, lora_A.weight.dtype)
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
-                    if self.use_nora.get(active_adapter, False) == "alltime":
+                    if self.use_nora.get(active_adapter) is True:
                         weight_A = lora_A.weight  # (r, in_features)
                         weight_A = weight_A / (weight_A.norm(dim=0, keepdim=True) + 1e-6)  # norm over r
                         result = result + lora_B(nn.functional.linear(dropout(x), weight_A, lora_A.bias)) * scaling
@@ -2303,7 +2303,7 @@ class ParamWrapper(nn.Module, LoraLayer):
         elif init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
 
-        if config.use_nora is True:
+        if config.use_nora == "init":
             # nora: normalize lora_A columns (over the r dimension) once, right after initialization
             self.normalize_lora_A_(adapter_name)
         # call this before init of the lora variants
