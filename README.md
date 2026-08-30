@@ -30,6 +30,10 @@ PiSSA/MiLoRA).
 
 ## Installation
 
+> **Note:** we are working on merging NoRA into the upstream
+> [PEFT](https://github.com/huggingface/peft) library. Once the PR lands, a plain
+> `pip install peft` will be enough — this fork is only needed in the meantime.
+
 ```bash
 git clone <this-repo>
 cd NoRA/peft
@@ -72,7 +76,9 @@ model = get_peft_model(base_model, config)
 ### SFT training
 
 The `sft/` directory contains a full supervised fine-tuning pipeline
-(HuggingFace Trainer + DeepSpeed, adapted from the PiSSA codebase):
+(HuggingFace Trainer + DeepSpeed), adapted from
+[PiSSA](https://github.com/MuLabPKU/PiSSA.git) and
+[PEFT-Arena](https://github.com/Sphere-AI-Lab/PEFT-Arena.git):
 
 ```bash
 cd sft
@@ -89,14 +95,15 @@ Key arguments in `sft/train.py`:
 | `--init_weights` | `True` = vanilla LoRA; `bimi` = BIMI; also `pissa`, `pissa_niter_N`, `olora`, `gaussian` |
 | `--lora_rank` / `--lora_alpha` | LoRA rank / alpha |
 | `--target_modules` | Comma-separated modules to adapt |
-| `--full_finetune` | Disable adapters and train the full model |
-| `--merge` | Merge adapter into base weights when saving |
-| `--bits` | `16` for full precision, `4`/`8` for quantized training |
 
 DeepSpeed configs are provided in `sft/configs/` (ZeRO-2 and ZeRO-3).
 
 ### RL training
-https://github.com/MikaStars39/PeRL.git
+
+For RL training, we directly build on [PeRL](https://github.com/MikaStars39/PeRL.git) —
+follow that repo for the RL pipeline; NoRA is enabled via the same `use_nora` flag in the
+PEFT config.
+
 ## Repository structure
 
 ```
