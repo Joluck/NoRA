@@ -1,4 +1,5 @@
 # NoRA: Normalized Low-Rank Adaptation
+<a href="https://spherelab.ai/NoRA/">Project Page</a>
 
 NoRA is a LoRA variant that normalizes the columns of `lora_A.weight` along the rank
 (r) dimension, implemented as a fork of [PEFT](https://github.com/huggingface/peft) together
@@ -125,13 +126,9 @@ NoRA/
 ## 📚 Citation
 
 ```bibtex
-@misc{kang2026normalizedlowrankadaptation,
+  @article{kang2026nora,
       title={Normalized Low-Rank Adaptation}, 
       author={Jiale Kang and Ziyin Yue and Zheng Zhan and Yangyi Huang and Weiyang Liu},
-      year={2026},
-      eprint={2608.31036},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2608.31036}, 
-}
+      journal={arXiv preprint arXiv:2608.31036},
+      year={2026}}
 ```
