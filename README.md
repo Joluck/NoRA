@@ -122,7 +122,9 @@ NoRA/
     └── utils/     # vLLM generation & accuracy scripts
 ```
 
+## 📚 Citation
 
+```bibtex
 @misc{kang2026normalizedlowrankadaptation,
       title={Normalized Low-Rank Adaptation}, 
       author={Jiale Kang and Ziyin Yue and Zheng Zhan and Yangyi Huang and Weiyang Liu},
@@ -132,3 +134,4 @@ NoRA/
       primaryClass={cs.LG},
       url={https://arxiv.org/abs/2608.31036}, 
 }
+```
