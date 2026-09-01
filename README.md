@@ -21,6 +21,10 @@ Two modes are supported via `use_nora`:
 is applied inside DoRA's forward (including its weight-norm computation), and the DoRA
 merge/unmerge path uses the same normalized delta via `get_delta_weight()`.
 
+> **Tip:** with NoRA we recommend setting `lora_alpha = r` (i.e. scaling = 1). Since every
+> column of `A` is unit-norm, the update magnitude is governed by `lora_B` alone, and
+> `alpha = rank` keeps the effective step size comparable across ranks.
+
 **BIMI** (Block Identity Matrix Initialization, `init_lora_weights="bimi"`) is a special
 case of this family: `lora_A` is initialized as `r × r` identity blocks tiled along the
 diagonal (`A[:, kr:(k+1)r] = I`), whose columns are already unit-norm and mutually
@@ -52,7 +56,7 @@ from peft import LoraConfig, get_peft_model
 
 config = LoraConfig(
     r=8,
-    lora_alpha=32,
+    lora_alpha=8,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
     use_nora=True,            # per-forward normalization; or "init" for init-only
 )
@@ -66,7 +70,7 @@ from peft import LoraConfig, get_peft_model
 
 config = LoraConfig(
     r=8,
-    lora_alpha=32,
+    lora_alpha=8,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
     init_lora_weights="bimi",   # optional: block identity init (already unit-norm)
 )
@@ -117,3 +121,14 @@ NoRA/
     ├── scripts/   # example training scripts
     └── utils/     # vLLM generation & accuracy scripts
 ```
+
+
+@misc{kang2026normalizedlowrankadaptation,
+      title={Normalized Low-Rank Adaptation}, 
+      author={Jiale Kang and Ziyin Yue and Zheng Zhan and Yangyi Huang and Weiyang Liu},
+      year={2026},
+      eprint={2608.31036},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2608.31036}, 
+}
